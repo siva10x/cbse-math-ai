@@ -76,3 +76,4 @@ outputs/
 question_images/
 temp_images/
 uploads/
+vector_db/

@@ -1,41 +1,58 @@
-from langchain.vectorstores import Chroma
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.docstore.document import Document
+# myutils/vector_store.py
+
 import os
+import json
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain.schema import Document
+from dotenv import load_dotenv
 
-def create_vector_store_from_text(text, persist_path="chroma_store"):
-    """
-    Create a vector store from the provided text and persist it.
-    Args:
-        text (str): The text to embed and store.
-        persist_path (str): The directory to persist the vector store.
-    """
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    docs = [Document(page_content=chunk) for chunk in splitter.split_text(text)]
+load_dotenv()
 
-    embeddings = OpenAIEmbeddings()
-    
-    db = Chroma.from_documents(
-        documents=docs,
-        embedding=embeddings,
-        persist_directory=persist_path
-    )
-    db.persist()
-    return db
+CHROMA_DIR = "vector_db/chroma_store"
 
-def load_vector_store(persist_path="chroma_store"):
-    """
-    Load the vector store from the specified directory.
-    Args:
-        persist_path (str): The directory where the vector store is persisted.
-    Returns:
-        Chroma: The loaded vector store.
-    """
-    embeddings = OpenAIEmbeddings()
-    db = Chroma(
-        embedding_function=embeddings,
-        persist_directory=persist_path
-    )
-    return db
+def get_vector_store(persist_directory=CHROMA_DIR):
+    embedding = OpenAIEmbeddings()
+    vectordb = Chroma(persist_directory=persist_directory, embedding_function=embedding)
+    return vectordb
 
+def load_questions_from_json(json_path: str):
+    with open(json_path, 'r', encoding='utf-8') as f:
+        questions = json.load(f)
+    return questions
+
+def store_questions_to_vector_db(questions, persist_directory=CHROMA_DIR):
+    # 📂 Accept either a path or list of dicts
+    if isinstance(questions, str):
+        questions = load_questions_from_json(questions)
+
+    # 🧹 Ensure list
+    if not isinstance(questions, list):
+        raise ValueError("Expected a list of questions or a JSON file path.")
+
+    docs = []
+    for q in questions:
+        content = q.get("question_text", "")
+        metadata = {
+            "question_id": q.get("question_id", ""),
+            "marks": q.get("marks", ""),
+            "question_type": q.get("question_type", ""),
+            "topic": q.get("topic", ""),
+            "supporting_images": ", ".join(q.get("supporting_images", [])),
+        }
+        docs.append(Document(page_content=content, metadata=metadata))
+
+    vectordb = Chroma.from_documents(documents=docs, embedding=OpenAIEmbeddings(), persist_directory=persist_directory)
+    vectordb.persist()
+    print(f"✅ Stored {len(docs)} questions to Chroma at {persist_directory}")
+
+    # 🧪 Test it independently
+if __name__ == "__main__":
+    store_questions_to_vector_db("outputs/questions_combined.json")
+
+    vectordb = get_vector_store()
+    results = vectordb.similarity_search("pythagoras", k=1)
+
+    for r in results:
+        print(f"\nQuestion: {r.page_content}")
+        print(f"Metadata: {r.metadata}")

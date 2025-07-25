@@ -12,6 +12,7 @@ from myutils.logger import setup_logger
 from myutils.prompts import get_math_question_extraction_prompt
 from myutils.question_image_extractor import extract_images_for_questions
 from myutils.gpt_vision_extractor import extract_questions_from_images
+from myutils.vector_store import store_questions_to_vector_db
 
 logger = setup_logger(__name__)
 
@@ -80,6 +81,17 @@ def render():
                     # img for img in cropped_images if img["question_id"] == qid
                     img_path for img_path in cropped_images.get(q["question_id"], [])
                 ]
+
+            # ✅ Store to vector DB
+            with st.spinner("📦 Storing questions to vector database..."):
+                try:
+                    for q in gpt_questions:
+                        q["supporting_images"] = ", ".join(q.get("supporting_images", []))
+                    store_questions_to_vector_db(gpt_questions)
+                    st.success("✅ Questions successfully stored in vector DB.")
+                except Exception as e:
+                    st.error("❌ Failed to store to vector DB.")
+                    st.exception(e)
 
             # Save
             output_path = os.path.join("outputs", "questions_combined.json")
